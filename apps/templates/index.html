@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Analyse Comportementale Clientèle</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f5f4f0;
+      --surface: #ffffff;
+      --border: #e2e0d8;
+      --text: #1a1916;
+      --muted: #7a7870;
+      --accent: #2d5be3;
+      --accent-light: #eef1fc;
+      --danger: #d63a2f;
+      --success: #1e7a4a;
+      --warning: #b85c00;
+      --mono: 'DM Mono', monospace;
+      --sans: 'DM Sans', sans-serif;
+    }
+
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 40px 48px 80px;
+    }
+
+    /* ── Header ── */
+    .header {
+      margin: 0 0 48px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 24px;
+    }
+    .header-label {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    .header h1 {
+      font-size: clamp(22px, 4vw, 34px);
+      font-weight: 600;
+      letter-spacing: -.02em;
+      line-height: 1.15;
+    }
+    .header-meta {
+      margin-top: 10px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    /* ── Tabs ── */
+    .tabs {
+      margin: 0 0 36px;
+      display: flex;
+      gap: 4px;
+    }
+    .tab-btn {
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      padding: 8px 20px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      cursor: pointer;
+      border-radius: 4px;
+      color: var(--muted);
+      transition: all .15s;
+    }
+    .tab-btn.active {
+      background: var(--text);
+      color: #fff;
+      border-color: var(--text);
+    }
+    .tab-btn:hover:not(.active) {
+      border-color: var(--text);
+      color: var(--text);
+    }
+
+    /* ── Main content ── */
+    .content { width: 100%; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 28px 32px;
+      margin-bottom: 20px;
+    }
+    .card-title {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 20px;
+    }
+
+    /* ── Form ── */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } }
+
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted);
+      letter-spacing: .03em;
+    }
+    .field input, .field select {
+      font-family: var(--sans);
+      font-size: 14px;
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text);
+      outline: none;
+      transition: border-color .15s;
+    }
+    .field input:focus, .field select:focus {
+      border-color: var(--accent);
+    }
+
+    .btn-run {
+      margin-top: 24px;
+      width: 100%;
+      padding: 13px;
+      background: var(--text);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: opacity .15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn-run:hover { opacity: .82; }
+    .btn-run:disabled { opacity: .4; cursor: not-allowed; }
+
+    /* Spinner */
+    .spinner {
+      display: none;
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Probability Banner ── */
+    .prob-banner {
+      background: var(--text);
+      border-radius: 8px;
+      padding: 24px 28px;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      margin-bottom: 20px;
+    }
+    .prob-circle {
+      width: 80px; height: 80px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,.2);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .prob-pct {
+      font-family: var(--mono);
+      font-size: 22px;
+      font-weight: 500;
+      color: #fff;
+      line-height: 1;
+    }
+    .prob-lbl {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,.45);
+      margin-top: 3px;
+    }
+    .prob-right { flex: 1; }
+    .prob-tag {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      padding: 3px 10px;
+      border-radius: 3px;
+      margin-bottom: 10px;
+    }
+    .prob-tag.low  { background: rgba(30,122,74,.3);  color: #6ee7b7; }
+    .prob-tag.med  { background: rgba(184,92,0,.3);   color: #fcd34d; }
+    .prob-tag.hi   { background: rgba(214,58,47,.3);  color: #fca5a5; }
+    .prob-track {
+      height: 4px;
+      background: rgba(255,255,255,.1);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+    .prob-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 1.2s cubic-bezier(.34,1.2,.64,1);
+    }
+    .prob-fill.low { background: var(--success); }
+    .prob-fill.med { background: var(--warning); }
+    .prob-fill.hi  { background: var(--danger); }
+    .prob-marks {
+      display: flex;
+      justify-content: space-between;
+      font-family: var(--mono);
+      font-size: 9px;
+      color: rgba(255,255,255,.3);
+    }
+    .prob-verdict {
+      font-size: 12px;
+      color: rgba(255,255,255,.65);
+      margin-top: 8px;
+      line-height: 1.5;
+    }
+
+    /* ── Results ── */
+    .results-section { display: none; margin-top: 20px; }
+
+    .results-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 700px) { .results-grid { grid-template-columns: 1fr; } }
+
+    .result-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px 22px;
+    }
+    .result-card .r-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    .result-card .r-model {
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .result-card .r-verdict {
+      font-size: 20px;
+      font-weight: 600;
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+    .verdict-churn { color: var(--danger); }
+    .verdict-loyal { color: var(--success); }
+    .r-prob {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .prob-bar {
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      margin-top: 8px;
+      overflow: hidden;
+    }
+    .prob-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      background: var(--accent);
+      transition: width .6s ease;
+    }
+
+    /* Cluster & Valeur */
+    .result-extra {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 600px) { .result-extra { grid-template-columns: 1fr; } }
+
+    .extra-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px 22px;
+    }
+    .extra-card .e-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .extra-card .e-value {
+      font-size: 26px;
+      font-weight: 600;
+      letter-spacing: -.02em;
+    }
+    .extra-card .e-desc {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    /* ── Dashboard ── */
+    .dash-kpis {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 700px) { .dash-kpis { grid-template-columns: repeat(2,1fr); } }
+
+    .kpi {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px 22px;
+    }
+    .kpi .k-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .kpi .k-val {
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: -.02em;
+    }
+    .kpi .k-sub {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    .dash-charts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 700px) { .dash-charts { grid-template-columns: 1fr; } }
+
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+    }
+    .chart-card .c-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    /* Model comparison table */
+    .model-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .model-table th {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      text-align: left;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .model-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .model-table tr:last-child td { border-bottom: none; }
+    .model-table .best { color: var(--success); font-weight: 600; }
+    .badge {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 3px;
+      background: var(--accent-light);
+      color: var(--accent);
+      letter-spacing: .04em;
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      background: var(--text);
+      color: #fff;
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 12px 20px;
+      border-radius: 6px;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: all .25s;
+      pointer-events: none;
+      z-index: 999;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    /* Features */
+    .features-list { display: flex; flex-direction: column; gap: 8px; }
+    .feat-row { display: flex; align-items: center; gap: 12px; }
+    .feat-name {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      width: 220px;
+      flex-shrink: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .feat-bar-wrap {
+      flex: 1;
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .feat-bar-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 3px;
+    }
+    .feat-val {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      width: 40px;
+      text-align: right;
+    }
+
+    @media (max-width: 600px) {
+      body { padding: 24px 20px 60px; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="header">
+    <div class="header-label">Machine Learning · Module GI2 · 2025–2026</div>
+    <h1>Analyse Comportementale Clientèle Retail</h1>
+    <div class="header-meta">Chahd Gharbi &nbsp;·&nbsp; Encadrante : Mme Fadoua Drira</div>
+  </header>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('prediction', event)">Prédiction</button>
+    <button class="tab-btn" onclick="switchTab('dashboard', event)">Dashboard</button>
+  </div>
+
+  <div class="content">
+
+    <!-- ─── PRÉDICTION ─── -->
+    <div id="panel-prediction" class="panel active">
+
+      <div class="card">
+        <div class="card-title">Données client &nbsp;·&nbsp; Renseignez les 4 variables du profil</div>
+        <div class="form-grid">
+          <div class="field">
+            <label>Fréquence d'achat</label>
+            <input type="number" id="inp-freq" placeholder="ex. 12" min="1" max="50"/>
+          </div>
+          <div class="field">
+            <label>Montant total (£)</label>
+            <input type="number" id="inp-monetary" placeholder="ex. 2400" min="0" max="15000"/>
+          </div>
+          <div class="field">
+            <label>Saison préférée</label>
+            <select id="inp-season">
+              <option value="" disabled selected>Choisir…</option>
+              <option value="Hiver">Hiver</option>
+              <option value="Printemps">Printemps</option>
+              <option value="Été">Été</option>
+              <option value="Automne">Automne</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Diversité produits</label>
+            <select id="inp-diversity">
+              <option value="" disabled selected>Choisir…</option>
+              <option value="Spécialisé">Spécialisé</option>
+              <option value="Modéré">Modéré</option>
+              <option value="Explorateur">Explorateur</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn-run" id="runBtn">
+          <span id="btnTxt">Lancer l'analyse</span>
+          <div class="spinner" id="btnSpin"></div>
+        </button>
+      </div>
+
+      <!-- RESULTS -->
+      <div class="results-section" id="resultsSection">
+
+        <!-- Probability banner -->
+        <div class="prob-banner">
+          <div class="prob-circle">
+            <div class="prob-pct" id="probPct">—</div>
+            <div class="prob-lbl">Churn</div>
+          </div>
+          <div class="prob-right">
+            <span class="prob-tag" id="probTag">—</span>
+            <div class="prob-track"><div class="prob-fill" id="probFill" style="width:0%"></div></div>
+            <div class="prob-marks"><span>0%</span><span>50%</span><span>100%</span></div>
+            <div class="prob-verdict" id="probVerdict"></div>
+          </div>
+        </div>
+
+        <!-- 3 models -->
+        <div class="results-grid">
+          <div class="result-card">
+            <div class="r-label">Random Forest</div>
+            <div class="r-model">Acc. 94.5% · AUC 0.985</div>
+            <div class="r-verdict" id="rf-verdict">—</div>
+            <div class="r-prob" id="rf-prob">—</div>
+            <div class="prob-bar"><div class="prob-bar-fill" id="rf-bar" style="width:0%"></div></div>
+          </div>
+          <div class="result-card">
+            <div class="r-label">XGBoost</div>
+            <div class="r-model">Acc. 97.1% · F1 0.96</div>
+            <div class="r-verdict" id="xgb-verdict">—</div>
+            <div class="r-prob" id="xgb-prob">—</div>
+            <div class="prob-bar"><div class="prob-bar-fill" id="xgb-bar" style="width:0%"></div></div>
+          </div>
+          <div class="result-card">
+            <div class="r-label">Stacking</div>
+            <div class="r-model">Acc. 97.0% · Rappel 0.93</div>
+            <div class="r-verdict" id="stk-verdict">—</div>
+            <div class="r-prob" id="stk-prob">—</div>
+            <div class="prob-bar"><div class="prob-bar-fill" id="stk-bar" style="width:0%"></div></div>
+          </div>
+        </div>
+
+        <!-- Cluster + Valeur -->
+        <div class="result-extra">
+          <div class="extra-card">
+            <div class="e-label">Segment K-Means</div>
+            <div class="e-value" id="cluster-val">—</div>
+            <div class="e-desc" id="cluster-desc">—</div>
+          </div>
+          <div class="extra-card">
+            <div class="e-label">Valeur estimée (XGB Regressor)</div>
+            <div class="e-value" id="regression-val">—</div>
+            <div class="e-desc">R² = 0.545 · RMSE = 7 648 £</div>
+          </div>
+        </div>
+
+        <!-- Top 15 features -->
+        <div class="card">
+          <div class="card-title">Top 15 features importantes — Random Forest</div>
+          <div class="features-list" id="features-list"></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ─── DASHBOARD ─── -->
+    <div id="panel-dashboard" class="panel">
+
+      <div class="dash-kpis">
+        <div class="kpi">
+          <div class="k-label">Meilleure Accuracy</div>
+          <div class="k-val">97.1%</div>
+          <div class="k-sub">XGBoost classifier</div>
+        </div>
+        <div class="kpi">
+          <div class="k-label">Meilleur F1 (churn)</div>
+          <div class="k-val">0.96</div>
+          <div class="k-sub">XGBoost · seuil 0.60</div>
+        </div>
+        <div class="kpi">
+          <div class="k-label">AUC-ROC</div>
+          <div class="k-val">0.985</div>
+          <div class="k-sub">Random Forest</div>
+        </div>
+        <div class="kpi">
+          <div class="k-label">Silhouette K-Means</div>
+          <div class="k-val">0.086</div>
+          <div class="k-sub">k=4 · +127% vs sans ACP</div>
+        </div>
+      </div>
+
+      <div class="dash-charts">
+
+        <div class="chart-card">
+          <div class="c-label">Comparaison des modèles</div>
+          <canvas id="chart-models" height="200"></canvas>
+        </div>
+
+        <div class="chart-card">
+          <div class="c-label">Distribution classes (avant SMOTE)</div>
+          <canvas id="chart-churn" height="200"></canvas>
+        </div>
+
+        <div class="chart-card">
+          <div class="c-label">Variance cumulée ACP</div>
+          <canvas id="chart-pca" height="200"></canvas>
+        </div>
+
+        <div class="chart-card">
+          <div class="c-label">Profils segments K-Means</div>
+          <canvas id="chart-kmeans" height="200"></canvas>
+        </div>
+
+      </div>
+
+      <div class="card" style="margin-top:20px;">
+        <div class="card-title">Tableau comparatif — Classification churn</div>
+        <table class="model-table">
+          <thead>
+            <tr>
+              <th>Modèle</th><th>Accuracy</th><th>F1 (churner)</th>
+              <th>Rappel</th><th>AUC</th><th>Seuil</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Random Forest <span class="badge">SMOTE</span></td>
+              <td>94.5%</td><td>0.92</td><td>0.89</td>
+              <td class="best">0.985</td><td>0.47</td>
+            </tr>
+            <tr>
+              <td>XGBoost <span class="badge">SMOTE</span></td>
+              <td class="best">97.1%</td><td class="best">0.96</td>
+              <td>0.92</td><td>—</td><td>0.60</td>
+            </tr>
+            <tr>
+              <td>Stacking RF + XGB</td>
+              <td>97.0%</td><td>0.95</td>
+              <td class="best">0.93</td><td>—</td><td>0.50</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+  // ─── Tab switching ───
+  function switchTab(name, e) {
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('panel-' + name).classList.add('active');
+    e.target.classList.add('active');
+    if (name === 'dashboard') initCharts();
+  }
+
+  // ─── Toast ───
+  function toast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 2800);
+  }
+
+  // ─── Segment profiles ───
+  const segmentProfiles = {
+    'Premium':      'Clients Premium — haute fréquence, montant élevé',
+    'Réguliers':    'Clients Réguliers — fréquence et montant modérés',
+    'Occasionnels': 'Clients Occasionnels — fort potentiel de réactivation',
+    'Inactifs':     'Clients Inactifs — risque élevé de churn',
+  };
+
+  // ─── Prediction ───
+  document.getElementById('runBtn').addEventListener('click', async () => {
+    const btn  = document.getElementById('runBtn');
+    const txt  = document.getElementById('btnTxt');
+    const spin = document.getElementById('btnSpin');
+    btn.disabled = true;
+    txt.style.display = 'none';
+    spin.style.display = 'block';
+
+    try {
+      const res = await fetch('/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          frequency:         parseFloat(document.getElementById('inp-freq').value),
+          monetary:          parseFloat(document.getElementById('inp-monetary').value),
+          favorite_season:   document.getElementById('inp-season').value,
+          product_diversity: document.getElementById('inp-diversity').value
+        })
+      });
+      const r = await res.json();
+      if (r.error) throw new Error(r.error);
+      renderResults(r);
+    } catch(e) {
+      toast('Erreur : ' + e.message);
+    } finally {
+      btn.disabled = false;
+      txt.style.display = 'inline';
+      spin.style.display = 'none';
+    }
+  });
+
+  // ─── Render ───
+  function renderResults(r) {
+    document.getElementById('resultsSection').style.display = 'block';
+    document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    // Probability banner
+    const p     = r.probability;
+    const level = p < 35 ? 'low' : p < 65 ? 'med' : 'hi';
+    const labels   = { low: 'Risque faible', med: 'Risque modéré', hi: 'Risque élevé' };
+    const verdicts = {
+      low: "Client fidèle — maintenez l'engagement avec des offres personnalisées.",
+      med: "Risque modéré — lancez une campagne de réactivation dans les 30 jours.",
+      hi:  "Risque élevé — contactez ce client immédiatement avec une offre exclusive."
+    };
+    document.getElementById('probPct').textContent    = p + '%';
+    const tag = document.getElementById('probTag');
+    tag.className   = 'prob-tag ' + level;
+    tag.textContent = labels[level];
+    const fill = document.getElementById('probFill');
+    fill.className  = 'prob-fill ' + level;
+    setTimeout(() => { fill.style.width = p + '%'; }, 80);
+    document.getElementById('probVerdict').textContent = verdicts[level];
+
+    // 3 models
+    renderModel('rf',  r.rf.churn);
+    renderModel('xgb', r.xgb.churn);
+    renderModel('stk', r.stacking.churn);
+
+    // Segment K-Means
+    const seg = r.segment || r.risk_segment || '—';
+    document.getElementById('cluster-val').textContent  = seg;
+    document.getElementById('cluster-desc').textContent = segmentProfiles[seg] || '';
+
+    // Revenue
+    const val = r.monetary_pred || 0;
+    document.getElementById('regression-val').textContent =
+      '£ ' + Number(val).toLocaleString('fr-FR', { maximumFractionDigits: 0 });
+
+    // Features
+    if (r.features && r.features.length) renderFeatures(r.features);
+  }
+
+  function renderModel(id, churnPct) {
+    const isChurn = churnPct > 50;
+    document.getElementById(id + '-verdict').textContent  = isChurn ? 'Churner' : 'Fidèle';
+    document.getElementById(id + '-verdict').className    = 'r-verdict ' + (isChurn ? 'verdict-churn' : 'verdict-loyal');
+    document.getElementById(id + '-prob').textContent     = `Proba. churn : ${churnPct}%`;
+    document.getElementById(id + '-bar').style.width      = churnPct + '%';
+    document.getElementById(id + '-bar').style.background = isChurn ? 'var(--danger)' : 'var(--success)';
+  }
+
+  function renderFeatures(features) {
+    const max = features[0]?.importance || 1;
+    document.getElementById('features-list').innerHTML = features.map(f => `
+      <div class="feat-row">
+        <span class="feat-name">${f.name}</span>
+        <div class="feat-bar-wrap">
+          <div class="feat-bar-fill" style="width:${(f.importance / max * 100).toFixed(1)}%"></div>
+        </div>
+        <span class="feat-val">${(f.importance * 100).toFixed(1)}%</span>
+      </div>
+    `).join('');
+  }
+
+  // Init features on load
+  (function initFeatures() {
+    renderFeatures([
+      { name: 'FavoriteSeason_Automne',    importance: 0.307 },
+      { name: 'Frequency',                 importance: 0.183 },
+      { name: 'FirstPurchaseDaysAgo',      importance: 0.099 },
+      { name: 'AvgDaysBetweenPurchases',   importance: 0.092 },
+      { name: 'PreferredMonth',            importance: 0.077 },
+      { name: 'MonetaryTotal',             importance: 0.069 },
+      { name: 'UniqueProducts',            importance: 0.046 },
+      { name: 'AvgProductsPerTransaction', importance: 0.016 },
+      { name: 'MonetaryStd',               importance: 0.015 },
+      { name: 'AvgBasketValue',            importance: 0.013 },
+      { name: 'MonetaryAvg',              importance: 0.011 },
+      { name: 'AvgQuantityPerTransaction', importance: 0.010 },
+      { name: 'RegDay',                    importance: 0.009 },
+      { name: 'RegMonth',                  importance: 0.006 },
+      { name: 'PreferredHour',             importance: 0.005 },
+    ]);
+  })();
+  let chartsInited = false;
+  function initCharts() {
+    if (chartsInited) return;
+    chartsInited = true;
+
+    const font      = { family: 'DM Mono, monospace', size: 11 };
+    const gridColor = '#e2e0d8';
+    const muted     = '#7a7870';
+
+    new Chart(document.getElementById('chart-models'), {
+      type: 'bar',
+      data: {
+        labels: ['Random Forest', 'XGBoost', 'Stacking'],
+        datasets: [
+          { label: 'Accuracy (%)',    data: [94.5, 97.1, 97.0], backgroundColor: '#1a1916' },
+          { label: 'F1 Churner ×100', data: [92,   96,   95],   backgroundColor: '#d0d5f5' },
+          { label: 'Rappel ×100',     data: [89,   92,   93],   backgroundColor: '#e2e0d8' },
+        ]
+      },
+      options: {
+        plugins: { legend: { labels: { font, color: muted } } },
+        scales: {
+          x: { ticks: { font, color: muted }, grid: { color: gridColor } },
+          y: { min: 85, ticks: { font, color: muted }, grid: { color: gridColor } }
+        }
+      }
+    });
+
+    new Chart(document.getElementById('chart-churn'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Fidèles (67%)', 'Churners (33%)'],
+        datasets: [{ data: [67, 33], backgroundColor: ['#1a1916', '#e2e0d8'], borderWidth: 0 }]
+      },
+      options: {
+        plugins: { legend: { labels: { font, color: muted } } },
+        cutout: '65%'
+      }
+    });
+
+    const pcaLabels = Array.from({ length: 56 }, (_, i) => i + 1);
+    const pcaData   = pcaLabels.map(i => Math.min(100, 10 + i * 1.52 + (i < 10 ? i * 2.5 : 0)));
+    new Chart(document.getElementById('chart-pca'), {
+      type: 'line',
+      data: {
+        labels: pcaLabels,
+        datasets: [{
+          label: 'Variance cumulée (%)',
+          data: pcaData,
+          borderColor: '#1a1916',
+          backgroundColor: 'rgba(26,25,22,.05)',
+          borderWidth: 2,
+          pointRadius: 0,
+          fill: true,
+          tension: .4
+        }]
+      },
+      options: {
+        plugins: { legend: { labels: { font, color: muted } } },
+        scales: {
+          x: { title: { display: true, text: 'Composantes', font, color: muted }, ticks: { font, color: muted }, grid: { color: gridColor } },
+          y: { max: 100, ticks: { font, color: muted }, grid: { color: gridColor } }
+        }
+      }
+    });
+
+    new Chart(document.getElementById('chart-kmeans'), {
+      type: 'radar',
+      data: {
+        labels: ['Frequency', 'MonetaryTotal', 'Récence (inv.)', 'Régularité', 'UniqueProducts'],
+        datasets: [
+          {
+            label: 'A — Premium',
+            data: [95, 90, 85, 80, 70],
+            borderColor: '#1a1916',
+            backgroundColor: 'rgba(26,25,22,0.12)',
+            borderWidth: 2.5,
+            pointRadius: 5,
+            pointBackgroundColor: '#1a1916',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            borderDash: [],
+          },
+          {
+            label: 'B — Réguliers',
+            data: [65, 60, 60, 65, 55],
+            borderColor: '#2d5be3',
+            backgroundColor: 'rgba(45,91,227,0.10)',
+            borderWidth: 2,
+            pointRadius: 5,
+            pointBackgroundColor: '#2d5be3',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            borderDash: [6, 3],
+          },
+          {
+            label: 'C — Occasionnels',
+            data: [30, 30, 40, 35, 45],
+            borderColor: '#b85c00',
+            backgroundColor: 'rgba(184,92,0,0.10)',
+            borderWidth: 2,
+            pointRadius: 5,
+            pointBackgroundColor: '#b85c00',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            borderDash: [3, 3],
+          },
+          {
+            label: 'D — Inactifs',
+            data: [10, 12, 15, 20, 25],
+            borderColor: '#d63a2f',
+            backgroundColor: 'rgba(214,58,47,0.10)',
+            borderWidth: 2,
+            pointRadius: 5,
+            pointBackgroundColor: '#d63a2f',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            borderDash: [2, 4],
+          },
+        ]
+      },
+      options: {
+        plugins: {
+          legend: { labels: { font, color: muted, usePointStyle: true, pointStyleWidth: 16 } }
+        },
+        scales: {
+          r: {
+            min: 0, max: 100,
+            ticks: { stepSize: 20, font, color: muted, backdropColor: 'transparent' },
+            grid: { color: gridColor },
+            pointLabels: { font: { family: 'DM Mono, monospace', size: 11 }, color: muted }
+          }
+        }
+      }
+    });
+  }
+</script>
+</body>
+</html>

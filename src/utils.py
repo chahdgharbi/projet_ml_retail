@@ -1,213 +1,180 @@
-# ============================================================
-# src/utils.py
-# Fonctions utilitaires pour l'analyse des données
-# ============================================================
+"""
+utils.py — Version 2
+Utilitaires encapsulés dans deux classes distinctes :
+  - DataIO   : chargement et sauvegarde (données + modèles)
+  - Plotter  : toutes les visualisations
+Logger Python à la place des print().
+"""
 
-import pandas as pd          # Manipulation des données (DataFrame)
-import numpy as np           # Calculs numériques
-import matplotlib.pyplot as plt  # Graphiques
-import seaborn as sns        # Graphiques avancés
-import os                    # Gestion des dossiers/fichiers
+import logging
+import os
 
+import joblib
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
 
-# ============================================================
-# 1️⃣ Analyse des valeurs manquantes
-# ============================================================
-
-def analyser_nan(df):
-    """
-    Analyse les valeurs manquantes du DataFrame
-    et retourne un résumé trié.
-    """
-
-    # Vérifier si le dataset est vide
-    if df.empty:
-        print("Dataset vide.")
-        return None
-
-    # Compter les valeurs manquantes par colonne
-    total_nan = df.isna().sum()
-
-    # Calculer le pourcentage de NaN
-    pourcentage = (total_nan / len(df)) * 100
-
-    # Créer un DataFrame résumé
-    resume = pd.DataFrame({
-        "Nb_NaN": total_nan,
-        "Pourcentage (%)": pourcentage.round(2)
-    })
-
-    # Garder seulement les colonnes avec des NaN
-    resume = resume[resume["Nb_NaN"] > 0]
-
-    # Trier par pourcentage décroissant
-    resume = resume.sort_values("Pourcentage (%)", ascending=False)
-
-    return resume
+# ── Logger ──────────────────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    datefmt="%H:%M:%S",
+)
+log = logging.getLogger(__name__)
 
 
-# ============================================================
-# 2️⃣ Détection des outliers avec la méthode IQR
-# ============================================================
+# ══════════════════════════════════════════════════════════════
+# I/O — Chargement & Sauvegarde
+# ══════════════════════════════════════════════════════════════
+class DataIO:
+    """Centralise toutes les opérations de lecture/écriture."""
 
-def detecter_outliers(df, colonne):
-    """
-    Détecte les valeurs extrêmes d'une colonne numérique
-    en utilisant la méthode IQR.
-    """
+    DOSSIER_MODELS   = 'models'
+    DOSSIER_DATA     = 'data/train_test'
+    DOSSIER_REPORTS  = 'reports'
 
-    # Vérifier que la colonne existe
-    if colonne not in df.columns:
-        raise ValueError("Colonne inexistante.")
+    # ── Données ───────────────────────────────────────────────
+    @staticmethod
+    def charger_csv(chemin: str) -> pd.DataFrame:
+        """Lit un fichier CSV et retourne un DataFrame."""
+        df = pd.read_csv(chemin)
+        log.info("CSV chargé : %s — %d lignes × %d colonnes",
+                 chemin, df.shape[0], df.shape[1])
+        return df
 
-    # Vérifier que la colonne est numérique
-    if not pd.api.types.is_numeric_dtype(df[colonne]):
-        raise TypeError("La colonne doit être numérique.")
+    @classmethod
+    def charger_train_test(
+        cls, dossier: str | None = None
+    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
+        """Charge les quatre fichiers du split train/test."""
+        rep = dossier or cls.DOSSIER_DATA
+        X_train = pd.read_csv(f'{rep}/X_train.csv')
+        X_test  = pd.read_csv(f'{rep}/X_test.csv')
+        y_train = pd.read_csv(f'{rep}/y_train.csv').squeeze()
+        y_test  = pd.read_csv(f'{rep}/y_test.csv').squeeze()
+        log.info("Train : %s | Test : %s", X_train.shape, X_test.shape)
+        return X_train, X_test, y_train, y_test
 
-    # Calcul des quartiles
-    Q1 = df[colonne].quantile(0.25)   # 25%
-    Q3 = df[colonne].quantile(0.75)   # 75%
+    # ── Modèles ───────────────────────────────────────────────
+    @classmethod
+    def charger_modele(cls, nom_fichier: str, dossier: str | None = None):
+        """Désérialise un artefact joblib."""
+        chemin = f'{dossier or cls.DOSSIER_MODELS}/{nom_fichier}'
+        artefact = joblib.load(chemin)
+        log.info("Modèle chargé : %s", chemin)
+        return artefact
 
-    # Calcul de l'IQR (écart interquartile)
-    IQR = Q3 - Q1
+    @classmethod
+    def sauvegarder_modele(cls, modele, nom_fichier: str,
+                           dossier: str | None = None) -> None:
+        """Sérialise un modèle avec joblib."""
+        rep = dossier or cls.DOSSIER_MODELS
+        os.makedirs(rep, exist_ok=True)
+        chemin = f'{rep}/{nom_fichier}'
+        joblib.dump(modele, chemin)
+        log.info("Modèle sauvegardé : %s", chemin)
 
-    # Définir les bornes
-    borne_inf = Q1 - 1.5 * IQR
-    borne_sup = Q3 + 1.5 * IQR
-
-    # Sélection des valeurs hors bornes
-    outliers = df[(df[colonne] < borne_inf) | (df[colonne] > borne_sup)]
-
-    print(f"Nombre d'outliers : {len(outliers)}")
-
-    return len(outliers), borne_inf, borne_sup
-
-
-# ============================================================
-# 3️⃣ Sauvegarde d'un graphique
-# ============================================================
-
-def sauvegarder_graphique(nom_fichier, dossier="reports"):
-    """
-    Sauvegarde le graphique matplotlib actif
-    dans un dossier.
-    """
-
-    # Créer le dossier s'il n'existe pas
-    os.makedirs(dossier, exist_ok=True)
-
-    # Construire le chemin complet
-    chemin = os.path.join(dossier, nom_fichier)
-
-    # Sauvegarder l'image
-    plt.savefig(chemin, dpi=300, bbox_inches="tight")
-
-    print(f"Graphique sauvegardé dans : {chemin}")
-
-
-# ============================================================
-# 4️⃣ Visualisation d'une distribution
-# ============================================================
-
-def afficher_distribution(df, colonne, bins=30):
-    """
-    Affiche un histogramme + boxplot
-    pour analyser la distribution.
-    """
-
-    if colonne not in df.columns:
-        raise ValueError("Colonne non trouvée.")
-
-    if not pd.api.types.is_numeric_dtype(df[colonne]):
-        raise TypeError("Colonne non numérique.")
-
-    # Création de 2 graphiques côte à côte
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
-
-    # Histogramme avec courbe de densité
-    sns.histplot(df[colonne], bins=bins, kde=True, ax=axes[0])
-    axes[0].set_title(f"Histogramme - {colonne}")
-
-    # Boxplot pour visualiser les outliers
-    sns.boxplot(x=df[colonne], ax=axes[1])
-    axes[1].set_title(f"Boxplot - {colonne}")
-
-    plt.tight_layout()  # Ajuste automatiquement les espaces
-    plt.show()
+    @classmethod
+    def sauvegarder_figure(cls, nom_fichier: str,
+                           dossier: str | None = None, dpi: int = 150) -> None:
+        """Enregistre la figure matplotlib courante puis la ferme."""
+        rep = dossier or cls.DOSSIER_REPORTS
+        os.makedirs(rep, exist_ok=True)
+        chemin = f'{rep}/{nom_fichier}'
+        plt.savefig(chemin, bbox_inches='tight', dpi=dpi)
+        plt.close()
+        log.info("Figure sauvegardée : %s", chemin)
 
 
-# ============================================================
-# 5️⃣ Résumé global du dataset
-# ============================================================
+# ── Fonctions libres pour la rétrocompatibilité ──────────────────────────────
+def charger_train_test(dossier: str | None = None):
+    return DataIO.charger_train_test(dossier)
 
-def resume_dataset(df):
-    """
-    Affiche un résumé général du dataset.
-    """
+def sauvegarder_modele(modele, nom_fichier: str, dossier: str | None = None):
+    DataIO.sauvegarder_modele(modele, nom_fichier, dossier)
 
-    print("=" * 50)
-    print("RÉSUMÉ DU DATASET")
-    print("=" * 50)
-
-    print(f"Lignes      : {df.shape[0]}")   # Nombre de lignes
-    print(f"Colonnes    : {df.shape[1]}")   # Nombre de colonnes
-    print(f"Doublons    : {df.duplicated().sum()}")  # Nombre de doublons
-
-    # Utilisation mémoire en MB
-    memoire = df.memory_usage(deep=True).sum() / 1024**2
-    print(f"Mémoire     : {memoire:.2f} MB")
-
-    print("\nTypes de colonnes :")
-    print(df.dtypes.value_counts())
-
-    print(f"\nTotal NaN : {df.isna().sum().sum()}")
-    print("=" * 50)
+def sauvegarder_figure(nom_fichier: str, dossier: str | None = None, dpi: int = 150):
+    DataIO.sauvegarder_figure(nom_fichier, dossier, dpi)
 
 
-# ============================================================
-# 6️⃣ Analyse des corrélations
-# ============================================================
+# ══════════════════════════════════════════════════════════════
+# Visualisations
+# ══════════════════════════════════════════════════════════════
+class Plotter:
+    """Génère et sauvegarde les visualisations du projet."""
 
-def analyser_correlation(df, seuil=0.8, heatmap=False):
-    """
-    Affiche les paires de variables fortement corrélées.
-    """
+    def __init__(self, dossier_reports: str = 'reports', dpi: int = 150):
+        self.dossier = dossier_reports
+        self.dpi = dpi
 
-    # Sélectionner uniquement les colonnes numériques
-    df_num = df.select_dtypes(include="number")
+    def _sauvegarder(self, nom: str) -> None:
+        DataIO.sauvegarder_figure(nom, dossier=self.dossier, dpi=self.dpi)
 
-    if df_num.empty:
-        print("Aucune colonne numérique.")
-        return None
+    def importance_features(
+        self,
+        modele,
+        noms_features: list[str],
+        top_n: int = 20,
+        couleur: str = 'steelblue',
+    ) -> None:
+        """Bar chart des `top_n` features les plus importantes."""
+        importances = (
+            pd.Series(modele.feature_importances_, index=noms_features)
+            .sort_values(ascending=False)
+            .head(top_n)
+        )
+        plt.figure(figsize=(10, 6))
+        importances.plot(kind='bar', color=couleur, edgecolor='white')
+        plt.title(f'Top {top_n} features les plus importantes')
+        plt.ylabel('Importance')
+        plt.tight_layout()
+        self._sauvegarder('feature_importance.png')
 
-    # Calcul de la matrice de corrélation
-    corr = df_num.corr().abs()  # .abs() pour valeur absolue
+    def distribution_cible(
+        self,
+        y: pd.Series,
+        titre: str = 'Distribution de Churn',
+    ) -> None:
+        """Camembert Fidèle / Churner."""
+        counts = y.value_counts()
+        labels = [
+            f'Fidèle (0)\n{counts.get(0, 0)}',
+            f'Churner (1)\n{counts.get(1, 0)}',
+        ]
+        plt.figure(figsize=(5, 5))
+        plt.pie(counts, labels=labels, autopct='%1.1f%%',
+                colors=['#4C72B0', '#DD8452'], startangle=90)
+        plt.title(titre)
+        plt.tight_layout()
+        self._sauvegarder('distribution_churn.png')
 
-    # Option : afficher heatmap
-    #Une heatmap (carte de chaleur) est un graphique qui représente des valeurs numériques avec des couleurs.
-    #Plus la valeur est grande → plus la couleur est intense
-    #Plus la valeur est petite → couleur plus claire
-    if heatmap:
-        plt.figure(figsize=(8, 6))
-        sns.heatmap(corr, cmap="coolwarm")
-        plt.title("Matrice de corrélation")
-        plt.show()
+    def heatmap_correlation(
+        self,
+        df: pd.DataFrame,
+        top_n: int = 20,
+    ) -> None:
+        """
+        Heatmap de corrélation sur les `top_n` colonnes numériques
+        les plus corrélées à 'Churn' (si présente, sinon toutes).
+        """
+        numeriques = df.select_dtypes(include=[np.number])
+        if 'Churn' in numeriques.columns:
+            top_cols = (
+                numeriques.corr()['Churn'].abs()
+                .sort_values(ascending=False)
+                .head(top_n)
+                .index.tolist()
+            )
+        else:
+            top_cols = numeriques.columns[:top_n].tolist()
 
-    paires = []
-
-    # Parcourir la matrice
-    for i in range(len(corr.columns)):
-        for j in range(i + 1, len(corr.columns)):
-            if corr.iloc[i, j] >= seuil:
-                paires.append({
-                    "Variable 1": corr.columns[i],
-                    "Variable 2": corr.columns[j],
-                    "Corrélation": round(corr.iloc[i, j], 3)
-                })
-
-    if paires:
-        result = pd.DataFrame(paires).sort_values("Corrélation", ascending=False)
-        return result
-    else:
-        print("Aucune corrélation forte détectée.")
-        return None
+        plt.figure(figsize=(12, 10))
+        sns.heatmap(
+            numeriques[top_cols].corr(),
+            annot=False, cmap='coolwarm', center=0,
+            linewidths=0.3, square=True,
+        )
+        plt.title(f'Matrice de corrélation (top {top_n} features)')
+        plt.tight_layout()
+        self._sauvegarder('heatmap_correlation.png')
